@@ -99,12 +99,24 @@ voos_realizados <- subset(voos_realizados, voos_realizados$departure_delay > (Q1
 #visualizar sumario dos dados
 summary(voos_realizados)
 
+#Retirando registros NA
+voos_realizados<- voos_realizados %>% na.omit() 
+
 #Criar fator para chegada do vôo
 horario_chegada=cut(voos_realizados$arrival_delay,breaks=c(-40,-5,5,40), ordered=TRUE)
 levels(horario_chegada) <- c("antecipado", "no horário", "atrasado")
 
-#adicionando coluna categorica com dados de dhorario da chegada
+#Criar fator para estação do ano
+estacao_ano <- as.numeric(voos_realizados$real_arrival_date)
+estacao_ano=cut(estacao_ano,breaks=c(2,80,173,266,356,367), ordered=TRUE)
+levels(estacao_ano) <- c("verão", "outono", "inverno","primavera","verão")
+
+
+#adicionando coluna categorica com dados de horario da chegada
 voos_realizados$chegada <- horario_chegada
+
+#adicionando coluna categorica de estações do ano
+voos_realizados$estacao <- estacao_ano
 
 
 #Voos chegada somente dados numericos
@@ -122,6 +134,10 @@ voos_realizados_norm_numeric_reduzido <- voos_realizados_norm_numeric %>% slice_
 # Criando matriz de correlação
 matriz_corr_norm<- round(cor(voos_realizados_norm_numeric_reduzido),1)
 
+#grafico de dispersao relacionando ponto de orvalho e visibilidade para cada tipo de voo
+ggplot(voos_realizados_norm, aes(y = arrival_visibility, x = arrival_dew_point ,shape = estacao_ano, color = estacao_ano)) + geom_point(size = 3, alpha = .7) +
+  xlab("Ponto de orvalho") + ylab("Temperatura") + facet_wrap(~ linetype_code, nrow = 2)
+
 #Criando gráfico a partir da matriz de correlação
 ggcorrplot(matriz_corr_norm, method = "circle", lab = TRUE, lab_size = 2.5,
            hc.order = TRUE, type = "lower",legend.title = "Grau de correlação",
@@ -132,9 +148,7 @@ ggpairs(voos_realizados_norm_numeric)
 
 ggplot(data=voos_realizados_norm) + geom_bar(mapping = aes(x=horario_chegada)) + facet_wrap(~ linetype_code, nrow = 2)
 
-#grafico de dispersao relacionando ponto de orvalho e visibilidade para cada tipo de voo
-ggplot(voos_realizados_norm, aes(y = arrival_visibility, x = arrival_dew_point ,shape = horario_chegada, color = horario_chegada)) + geom_point(size = 3, alpha = .7) +
-  xlab("Ponto de orvalho") + ylab("Temperatura") + facet_wrap(~ linetype_code, nrow = 2)
+
 
 
 
