@@ -19,9 +19,7 @@ load("~/bfd.rda")
 colors <- brewer.pal(11, 'Paired')
 font <- theme(text = element_text(size=16))
 
-#Parte 1: Avaliacao atributos
-#Verifica situacao atributos
-summary(bfd)
+#Parte 1: Seleção atributos
 
 #Remove colunas com valores constantes
 bfd <- dplyr::select (bfd, -c (depart_cloudiness, depart_visibility, depart_pressure, arrival_pressure, arrival_visibility, origin_name, origin_country, destination_name, destination_country, airline_name, justification_description))
@@ -35,33 +33,32 @@ bfd <- dplyr::select (bfd, -c (real_depart_date, real_depart_hour, real_arrival_
 #Exclui atributos expected_arrival_date e expected_arrival_hour. Expectativa de chegada pode ser pertubada por atrasos na saida ou voo.
 bfd <- dplyr::select (bfd, -c (expected_arrival_date, expected_arrival_hour))
 
+#Retira situation_type. A intencao e verificar os atrasos, se houve cancelamento nao e relevante
+#bfd <- dplyr::select (bfd, -c (situation_type))
+
 #Exclui atributos numérico com categóricos correspondentes
 bfd <- dplyr::select (bfd, -c (depart_wind_speed, depart_wind_direction, expected_depart_hour, arrival_wind_speed, arrival_wind_direction))
 
 #Retira ponto de orvalho, que tem relacao com umidade e temperatura
 bfd <- dplyr::select (bfd, -c (depart_dew_point, arrival_dew_point))
 
-#Substitui valores N/A, Not Informed nas colunas, para NA
-#Essa limpeza e necessaria para possibilitar a verificacao de atributos vazios
-bfd <- bfd %>% dplyr::na_if("N/A")
-bfd <- bfd %>% dplyr::na_if("Not Informed")
-
-#Verifica atributos com valores faltantes
-naniar::miss_var_summary(bfd) #sumario
-naniar::gg_miss_var(bfd) #formato visual
+#Retira departure_delay e flight_delay. Estes atributos estão tendendo a decisão para eles, o que interesse sao as condicoes para o atraso e nao o momento. Os atributos real_duration e expected_duration foram utilizados para gerar o flight_delay
+bfd <- dplyr::select (bfd, -c (departure_delay, real_duration, expected_duration))
 
 #Remove atributos com mais de 30% de valores vazios
 bfd <- dplyr::select (bfd, -c (justification_code, arrival_ceiling, depart_ceiling, arrival_cloudiness))
 
 #Parte 2: Limpezas
 
-#Verifica novamente valores faltantes com relação entre atributos
-naniar::gg_miss_upset(bfd) #Não tem relação entre valores vazios
+#Substitui valores N/A, Not Informed nas colunas, para NA
+#Essa limpeza e necessaria para possibilitar a verificacao de atributos vazios
+bfd.clean <- bfd %>% dplyr::na_if("N/A")
+bfd.clean <- bfd.clean %>% dplyr::na_if("Not Informed")
 
 #Limpa valores com erro de temperatura
 lo    <- 0
 up    <- 100
-bfd.clean <- subset(bfd, bfd$depart_humidity >= lo & bfd$depart_humidity <= up)
+bfd.clean <- subset(bfd.clean, bfd$depart_humidity >= lo & bfd$depart_humidity <= up)
 bfd.clean <- subset(bfd.clean, bfd.clean$arrival_humidity >= lo & bfd.clean$arrival_humidity <= up)
 
 #Limpa valores infinitos e NA
@@ -76,22 +73,10 @@ bfd.clean <- transform(out_obj, bfd.clean) #retorna dados limpos
 
 #Parte 3: Transformações
 
-#Substitui real_duration e expected_duration por flight_delay
-bfd.clean$flight_delay = bfd.clean$real_duration - bfd.clean$expected_duration
-bfd.clean <- dplyr::select (bfd.clean, -c (real_duration, expected_duration))
-
 #Determina categorias para atraso - conforme quadrantes
-lev <- cut(bfd.clean$departure_delay, breaks=c(min(bfd.clean$departure_delay)-1, -5, 5, max(bfd.clean$departure_delay)+1), ordered=TRUE)
-levels(lev) <- c("early", "on_time", "delayed")
-bfd.clean$departure_delay <- lev
-
 lev <- cut(bfd.clean$arrival_delay, breaks=c(min(bfd.clean$arrival_delay)-1, -5, 5, max(bfd.clean$arrival_delay)+1), ordered=TRUE)
 levels(lev) <- c("early", "on_time", "delayed")
 bfd.clean$arrival_delay <- lev
-
-lev <- cut(bfd.clean$flight_delay, breaks=c(min(bfd.clean$flight_delay)-1, -5, 5, max(bfd.clean$flight_delay)+1), ordered=TRUE)
-levels(lev) <- c("early", "on_time", "delayed")
-bfd.clean$flight_delay <- lev
 
 #Determina niveis de temperatura
 lev <- cut(bfd.clean$depart_temperature, breaks=c(min(bfd.clean$depart_temperature)-1, 15, 32, max(bfd.clean$depart_temperature)+1), ordered=TRUE)
@@ -117,7 +102,7 @@ bfd.clean$arrival_humidity <- lev
 bfdTrans <- as(bfd.clean, "transactions")
 
 #Apriori
-rules <- apriori(bfdTrans, parameter=list(supp = 0.1, conf = 0.6, minlen=2, maxlen= 10, target = "rules"), appearance=list(rhs = c("arrival_delay=delayed"), default="lhs"), control=NULL)
+rules <- apriori(bfdTrans, parameter=list(supp = 0.1, conf = 0.1, minlen=2, maxlen= 10, target = "rules"), appearance=list(rhs = c("arrival_delay=delayed"), default="lhs"), control=NULL)
 inspect(rules)
 
 rules_a <- as(rules, "data.frame")

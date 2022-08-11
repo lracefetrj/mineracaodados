@@ -1,4 +1,5 @@
-options(java.parameters = c("-XX:+UseConcMarkSweepGC", "-Xmx8192m")) 
+#options(java.parameters = c("-XX:+UseConcMarkSweepGC", "-Xmx8192m"))
+options(java.parameters = c("-XX:+UseConcMarkSweepGC", "-Xmx12000m"))
 
 #version 1.5
 source("https://raw.githubusercontent.com/eogasawara/mylibrary/master/myBasic.R")
@@ -8,9 +9,6 @@ source("https://raw.githubusercontent.com/eogasawara/mylibrary/master/myGraphic.
 library(naniar) #Para verificar valores faltantes
 library(rpart) #Decision Tree
 library(rpart.plot) #Decision Tree
-loadlibrary("arules") #Padroes frequentes, apriori
-loadlibrary("arulesViz") #Padroes frequentes, apriori
-loadlibrary("arulesSequences") #Padroes frequentes, apriori
 
 #Carrega base de dados de viagens
 load("~/bfd.rda")
@@ -38,9 +36,6 @@ bfd <- dplyr::select (bfd, -c (expected_arrival_date, expected_arrival_hour))
 #Exclui atributos categóricos com numérico correspondente
 bfd <- dplyr::select (bfd, -c (ds_depart_wind_speed, ds_depart_wind_direction, ds_depart_day_period, ds_arrival_wind_speed, ds_arrival_wind_direction, ds_arrival_day_period))
 
-#Escopo de analise sera apenas atrasos. Retira todos os casos de antecipacao
-bfd <- subset(bfd, bfd$arrival_delay > -5)
-
 #Substitui valores N/A, Not Informed nas colunas, para NA
 #Essa limpeza e necessaria para possibilitar a verificacao de atributos vazios
 bfd <- bfd %>% dplyr::na_if("N/A")
@@ -53,31 +48,7 @@ naniar::gg_miss_var(bfd) #formato visual
 #Remove atributos com mais de 30% de valores vazios
 bfd <- dplyr::select (bfd, -c (justification_code, arrival_ceiling, depart_ceiling, arrival_cloudiness))
 
-#Parte 2: Transformações
-
-#Substitui real_duration e expected_duration por flight_delay
-bfd$flight_delay = bfd$real_duration - bfd$expected_duration
-bfd <- dplyr::select (bfd, -c (real_duration, expected_duration))
-
-bfd <- mutate(bfd, delay = ifelse(arrival_delay <= 0, "on_time", ifelse(flight_delay <= 0 & departure_delay > 0, "delay_on_departure", ifelse(flight_delay > 0 & departure_delay <= 0, "delay_on_flight", "delay_on_flight_departure"))))
-
-bfd <- dplyr::select (bfd, -c (arrival_delay, departure_delay, flight_delay))
-
-#Transforma atributos Factor para num
-bfd$expected_depart_date <- as.numeric(bfd$expected_depart_date)
-bfd$expected_depart_hour <- as.numeric(bfd$expected_depart_hour)
-
-#Mapeamento categórico - linetype_code
-bfd <- subset(bfd, !is.na(bfd$linetype_code)) #Remove linhas de linetype_code com NA
-cm <- categ_mapping("linetype_code")
-bfd <- transform(cm, bfd)
-
-#Mapeamento categórico - situation_type
-cm <- categ_mapping("situation_type")
-bfd <- transform(cm, bfd)
-bfd <- dplyr::select (bfd, -c (linetype_code, situation_type, situation_typeCANCELADO)) #Mantem apenas situation_typeREALIZADO
-
-#Parte 3: Limpezas
+#Parte 2: Limpezas
 
 #Verifica novamente valores faltantes com relação entre atributos
 naniar::gg_miss_upset(bfd) #Não tem relação entre valores vazios
@@ -97,7 +68,35 @@ out_obj <- outliers() #classe analise de outliers
 out_obj <- fit(out_obj, bfd.clean) #calculando fronteiras
 bfd.clean <- transform(out_obj, bfd.clean) #retorna dados limpos
 
-#Parte 5: Redução de dimensionalidade
+#Parte 3: Transformações
+
+#Substitui real_duration e expected_duration por flight_delay
+bfd.clean$flight_delay = bfd.clean$real_duration - bfd.clean$expected_duration
+bfd.clean <- dplyr::select (bfd.clean, -c (real_duration, expected_duration))
+
+#Determina categorias para atraso - conforme quadrantes
+lev <- cut(bfd.clean$arrival_delay, breaks=c(min(bfd.clean$arrival_delay)-1, -5, 5, max(bfd.clean$arrival_delay)+1), ordered=TRUE)
+levels(lev) <- c("early", "on_time", "delayed")
+bfd.clean$arrival_delay <- lev
+
+#Retira departure_delay e flight_delay. Estes atributos estão tendendo a decisão para eles, o que interesse sao as condicoes para o atraso e nao o momento
+bfd.clean <- dplyr::select (bfd.clean, -c (departure_delay, flight_delay))
+
+#Transforma atributos Factor para num
+bfd.clean$expected_depart_date <- as.numeric(bfd.clean$expected_depart_date)
+bfd.clean$expected_depart_hour <- as.numeric(bfd.clean$expected_depart_hour)
+
+#Mapeamento categórico - linetype_code
+bfd.clean <- subset(bfd.clean, !is.na(bfd.clean$linetype_code)) #Remove linhas de linetype_code com NA
+cm <- categ_mapping("linetype_code")
+bfd.clean <- transform(cm, bfd.clean)
+
+#Mapeamento categórico - situation_type
+cm <- categ_mapping("situation_type")
+bfd.clean <- transform(cm, bfd.clean)
+bfd.clean <- dplyr::select (bfd.clean, -c (linetype_code, situation_type, situation_typeCANCELADO)) #Mantem apenas situation_typeREALIZADO
+
+#Parte 4: Redução de dimensionalidade
 
 #Verifica correlação
 #Separa atributos numericos e categoricos para analise de correlacao
@@ -108,7 +107,7 @@ bfd.clean.num <- dplyr::select (bfd.clean.num, -c (linetype_codeC,linetype_codeE
 
 #Avaliação a partir da categoria departure_delay
 colunas <- colnames(bfd.clean.num) #Seleciona colunas numericas
-bfd.clean.num <- data.frame (bfd.clean.num,  dplyr::select (bfd.clean, delay)) #Adiciona coluna atraso
+bfd.clean.num <- data.frame (bfd.clean.num,  dplyr::select (bfd.clean, arrival_delay)) #Adiciona coluna atraso
 
 #Analisa correlacao das colunas
 plot.correlation(bfd.clean.num %>% dplyr::select(colunas))
@@ -123,23 +122,26 @@ select_features <- function(myfeature, data) {
 
 #Feature Selecion
 bfd.clean.num <- dplyr::select_if(bfd.clean, is.numeric)
-bfd.clean.num <- data.frame (bfd.clean.num,  dplyr::select (bfd.clean, delay)) #Adiciona coluna atraso
+bfd.clean.num <- data.frame (bfd.clean.num,  dplyr::select (bfd.clean, arrival_delay)) #Adiciona coluna atraso
 #Decision Tree
 set.seed(1234)
 ind <- sample(2, nrow(bfd.clean.num), replace = T, prob = c(0.5, 0.5))
 train <- bfd.clean.num[ind == 1,]
 test <- bfd.clean.num[ind == 2,]
-tree <- rpart(delay ~., data = train)
+tree <- rpart(arrival_delay ~., data = train)
 rpart.plot(tree, box.palette = "green")
 
 #Lasso
-select_features(feature_selection_lasso("delay"), bfd.clean.num)
+select_features(feature_selection_lasso("arrival_delay"), bfd.clean.num)
 
 #FSS
-select_features(feature_selection_fss("delay"), bfd.clean.num)
+select_features(feature_selection_fss("arrival_delay"), bfd.clean.num)
 
 #IG
-select_features(feature_selection_ig("delay"), bfd.clean.num)
+select_features(feature_selection_ig("arrival_delay"), bfd.clean.num)
 
-#Seleciona atributos de delay
+#Relief - funciona no regulus
+select_features(feature_selection_relief("arrival_delay"), bfd.clean.num)
+
+#Seleciona atributos de arrival_delay
 bfd.clean.num <- dplyr::select (bfd.clean.num, expected_depart_date, expected_depart_hour, depart_temperature, depart_wind_direction, arrival_dew_point)
