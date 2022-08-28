@@ -5,6 +5,7 @@ source("https://raw.githubusercontent.com/eogasawara/mylibrary/master/myBasic.R"
 source("https://raw.githubusercontent.com/eogasawara/mylibrary/master/myPreprocessing.R")
 source("https://raw.githubusercontent.com/eogasawara/mylibrary/master/myClustering.R")
 
+library(factoextra)
 library(cluster)
 library(purrr)
 
@@ -32,18 +33,6 @@ norm <- fit(norm, data)
 data <- transform(norm, data)
 
 #Parte 2 - Faz agrupamentos
-#Testa valores de K
-#set.seed(123)
-#Funcao para computar total somas quadradas de within-cluster
-#wss <- function(k) {
-#  kmeans(data, k, nstart = 10)$tot.withinss
-#}
-#Calcula e plota wss para k=1 ate k=15
-#k.values <- 1:15
-#Extrai wss para agrupamentos de 2-15
-#wss_values <- map_dbl(k.values, wss)
-#plot(k.values, wss_values,type="b", pch = 19, frame = FALSE, xlab="Número de agrupamentos K", ylab="Total somas quadradas within-clusters")
-
 #Funcao geral para teste dos metodo de agrupamento
 test_clustering <- function(model, data, attribute, opt=FALSE) {
   print(class(model)[1])
@@ -55,19 +44,41 @@ test_clustering <- function(model, data, attribute, opt=FALSE) {
   print(eval$entropy)
 }
 
-#K-means. K = 3
-test_clustering(cluster_kmeans(k=3), data[,2:7], data[1])
+#Testa valores de K - K-means
+set.seed(123)
+#Funcao para computar total somas quadradas de within-cluster
+wss <- function(k) {
+  kmeans(data[,2:7], k, nstart = 10)$tot.withinss
+}
+#Calcula e plota wss para k=1 ate k=10
+k.values <- 1:10
+#Extrai wss para agrupamentos de 2-10
+wss_values <- map_dbl(k.values, wss)
+plot(k.values, wss_values,type="b", pch = 19, frame = FALSE, xlab="Número de agrupamentos K", ylab="Total somas quadradas within-clusters")
 
-#Valor otimo de K-means
-test_clustering(cluster_kmeans(NULL), data[,2:7], data[1], TRUE)
+#K-means. K = 4
+test_clustering(cluster_kmeans(k=4), data[,2:7], data[1])
+
+#Testa valores de K - Kmedoids
+set.seed(123)
+#Funcao para computar total somas quadradas de within-cluster
+data.sample = data[sample(nrow(data), 65536),]
+wss <- function(k) {
+  pam(data.sample[,2:7], k, nstart = 10)$tot.withinss
+}
+#Calcula e plota wss para k=1 ate k=10
+k.values <- 1:10
+#Extrai wss para agrupamentos de 2-10
+wss_values <- map_dbl(k.values, wss)
+plot(k.values, wss_values,type="b", pch = 19, frame = FALSE, xlab="Número de agrupamentos K", ylab="Total somas quadradas within-clusters")
 
 # kmedoid; k = 3
-test_clustering(cluster_pam(k=3), data[,2:7], data[1])
+test_clustering(cluster_pam(k=3), data.sample[,2:7], data[1])
 
 #Valor otimo de kmedoid
 test_clustering(cluster_pam(NULL), data[,2:7], data[1], TRUE)
 
-# dbscan
+#dbscan
 test_clustering(cluster_dbscan(eps = 0.4, MinPts = 3), data[,2:7], data[1])
 
 #Valor otimo de dbscan
