@@ -7,6 +7,7 @@ source("https://raw.githubusercontent.com/eogasawara/mylibrary/master/myClusteri
 
 library(factoextra)
 library(cluster)
+library(fpc)
 library(purrr)
 
 #Carrega base de dados de viagens
@@ -20,35 +21,40 @@ print(eval$entropy)
 summary(data)
 
 #Retira coluna linha - muitos valores com "" e valor único (ordem)
-data <- dplyr::select (data, -c (linha, ordem, date))
+data <- dplyr::select (data, -c (linha, ordem, date, cod))
 
 #Limpa valores infinitos e NA
 is.na(data) <- sapply(data, is.infinite)
-data[is.na(data)] <- 0
 data <- na.omit(data)
 
+#Avalia e exclui outliers
+boxplot(data)
+#Detecta outliers
+detect_outlier <- function(x) {
+  Quantile1 <- quantile(x, probs=.25) #Calcula primeiro quartil
+  Quantile3 <- quantile(x, probs=.75) #Calcula terceiro quartil
+  IQR <- Quantile3-Quantile1 #Calcula distancia interquartil
+  x > Quantile3 + (IQR*1.5) | x < Quantile1 - (IQR*1.5)
+}
+#Remove outliers
+remove_outlier <- function(dataframe, columns=names(dataframe)) {
+  for (col in columns) {
+    dataframe <- dataframe[!detect_outlier(dataframe[[col]]), ]
+  }
+  return (dataframe)
+}
+data <- remove_outlier(data, c('lat', 'long', 'velocidade', 'dist', 'hour','minute'))
+boxplot(data)
+
 #Normalizacao
-norm <- zscore()
-norm <- fit(norm, data)
-data <- transform(norm, data)
+data <- scale(data)
 
 #Parte 2 - Faz agrupamentos
-#Funcao geral para teste dos metodo de agrupamento
-test_clustering <- function(model, data, attribute, opt=FALSE) {
-  print(class(model)[1])
-  if (opt) 
-    model <- optimize(model, data)    
-  clu <- fit(model, data)
-  print(table(clu))
-  eval <- cluster_evaluation(clu, attribute)
-  print(eval$entropy)
-}
-
 #Testa valores de K - K-means
 set.seed(123)
 #Funcao para computar total somas quadradas de within-cluster
 wss <- function(k) {
-  kmeans(data[,2:7], k, nstart = 10)$tot.withinss
+  kmeans(data, k, nstart = 10)$tot.withinss
 }
 #Calcula e plota wss para k=1 ate k=10
 k.values <- 1:10
@@ -57,29 +63,16 @@ wss_values <- map_dbl(k.values, wss)
 plot(k.values, wss_values,type="b", pch = 19, frame = FALSE, xlab="Número de agrupamentos K", ylab="Total somas quadradas within-clusters")
 
 #K-means. K = 4
-test_clustering(cluster_kmeans(k=4), data[,2:7], data[1])
+km <- kmeans(data,4)
+#Visualiza Agrupamento K-means
+fviz_cluster(km, data=data, geom="point", stand=FALSE, main="kMEANS — CLUSTERING", ellipse.type="norm")
 
-#Testa valores de K - Kmedoids
-set.seed(123)
-#Funcao para computar total somas quadradas de within-cluster
-data.sample = data[sample(nrow(data), 65536),]
-wss <- function(k) {
-  pam(data.sample[,2:7], k, nstart = 10)$tot.withinss
-}
-#Calcula e plota wss para k=1 ate k=10
-k.values <- 1:10
-#Extrai wss para agrupamentos de 2-10
-wss_values <- map_dbl(k.values, wss)
-plot(k.values, wss_values,type="b", pch = 19, frame = FALSE, xlab="Número de agrupamentos K", ylab="Total somas quadradas within-clusters")
+#Kmedoid. K = 4
+claraa <- clara(data,4)
+# Visualize Agrupamento CLARA Clustering
+fviz_cluster(claraa, data=data, geom="point", stand=FALSE, main="CLARA — CLUSTERING", ellipse.type="norm")
 
-# kmedoid; k = 3
-test_clustering(cluster_pam(k=3), data.sample[,2:7], data[1])
-
-#Valor otimo de kmedoid
-test_clustering(cluster_pam(NULL), data[,2:7], data[1], TRUE)
-
-#dbscan
-test_clustering(cluster_dbscan(eps = 0.4, MinPts = 3), data[,2:7], data[1])
-
-#Valor otimo de dbscan
-test_clustering(cluster_dbscan(eps = NULL, MinPts = 3), data[,2:7], data[1], TRUE)
+#DBSCAN
+db <- fpc::dbscan(data,eps = 0.15, MinPts = 5)
+#Visualiza Agrupamento DBSCAN
+fviz_cluster(db, data=data, geom="point", stand=FALSE, show.clust.cent=FALSE, main="DBSCAN — CLUSTERING", ellipse.type="norm")
