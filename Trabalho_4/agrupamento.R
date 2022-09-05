@@ -49,6 +49,10 @@ boxplot(data)
 #Normalizacao
 data <- scale(data)
 
+#Seleciona amostra
+#data <- data %>% group_by(cod) %>% sample_frac(size=.30)
+#data = data[sample(nrow(data), size=0.1*nrow(data)), ]
+
 #Parte 2 - Faz agrupamentos
 #Testa valores de K - K-means
 set.seed(123)
@@ -67,12 +71,17 @@ km <- kmeans(data,4)
 #Visualiza Agrupamento K-means
 fviz_cluster(km, data=data, geom="point", stand=FALSE, main="kMEANS — CLUSTERING", ellipse.type="norm")
 
-#Kmedoid. K = 4
-claraa <- clara(data,4)
+#Testa valores de K
+fviz_nbclust(data, clara,  method="wss")#Executar com 1%
+#Kmedoid. K = 3
+claraa <- clara(data,3)
 # Visualize Agrupamento CLARA Clustering
 fviz_cluster(claraa, data=data, geom="point", stand=FALSE, main="CLARA — CLUSTERING", ellipse.type="norm")
 
-#DBSCAN
-db <- fpc::dbscan(data,eps = 0.15, MinPts = 5)
+#Testa valores de eps
+dbscan::kNNdistplot(data, k=10)
+abline(h = 0.7, lty = 2)
+#DBSCAN. MinPts = 10
+db <- fpc::dbscan(data,eps = 0.7, MinPts=100)
 #Visualiza Agrupamento DBSCAN
 fviz_cluster(db, data=data, geom="point", stand=FALSE, show.clust.cent=FALSE, main="DBSCAN — CLUSTERING", ellipse.type="norm")
