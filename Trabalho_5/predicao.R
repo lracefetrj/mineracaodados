@@ -14,8 +14,8 @@ library(rpart.plot) #Decision Tree
 load("~/bfd.rda")
 
 #Definicoes de cores
-colors <- brewer.pal(11, 'Paired')
-font <- theme(text = element_text(size=16))
+#colors <- brewer.pal(11, 'Paired')
+#font <- theme(text = element_text(size=16))
 
 #Parte 1: Avaliacao atributos
 #Verifica situacao atributos
@@ -60,7 +60,6 @@ bfd.clean <- subset(bfd, bfd$depart_humidity >= lo & bfd$depart_humidity <= up)
 
 #Limpa valores infinitos e NA
 is.na(bfd.clean) <- sapply(bfd.clean, is.infinite)
-bfd.clean[is.na(bfd.clean)] <- 0
 bfd.clean <- na.omit(bfd.clean)
 
 #Remove outliers
@@ -88,13 +87,16 @@ bfd.clean$expected_depart_hour <- as.numeric(bfd.clean$expected_depart_hour)
 
 #Mapeamento categórico - linetype_code
 bfd.clean <- subset(bfd.clean, !is.na(bfd.clean$linetype_code)) #Remove linhas de linetype_code com NA
-cm <- categ_mapping("linetype_code")
-bfd.clean <- transform(cm, bfd.clean)
+#cm <- categ_mapping("linetype_code")
+#bfd.clean <- transform(cm, bfd.clean)
 
 #Mapeamento categórico - situation_type
-cm <- categ_mapping("situation_type")
-bfd.clean <- transform(cm, bfd.clean)
-bfd.clean <- dplyr::select (bfd.clean, -c (linetype_code, situation_type, situation_typeCANCELADO)) #Mantem apenas situation_typeREALIZADO
+#cm <- categ_mapping("situation_type")
+#bfd.clean <- transform(cm, bfd.clean)
+bfd.clean <- dplyr::select (bfd.clean, -c (linetype_code, situation_type)) #situation_typeCANCELADOMantem apenas situation_typeREALIZADO
+
+#Retira atributos categoricos que nao foi possivel transformar em numerico
+bfd.clean <- dplyr::select (bfd.clean, -c (airline_icao, origin_icao, destination_icao))
 
 #Normalizacao
 norm <- zscore()
@@ -104,6 +106,10 @@ bfd.clean <- transform(norm, bfd.clean)
 #Extrai os levels do do dataset
 slevels <- levels(bfd.clean$arrival_delay)
 slevels
+
+#Seleciona amostra
+#data <- data %>% group_by(cod) %>% sample_frac(size=.30)
+bfd.clean = bfd.clean[sample(nrow(bfd.clean), size=0.01*nrow(bfd.clean)), ]
 
 #Parte 4: Amostra (separa em treinamento e teste)
 # preparing dataset for random sampling
@@ -126,14 +132,14 @@ train_test <- function(model, bfd_train, bfd_test) {
   model <- fit(model, bfd_train)
   train_prediction <- predict(model, bfd_train)
   
-  bfd_train_predictand = decodeClassLabels(bfd_train[,"arrival_delay"])
+  bfd_train_predictand = RSNNS::decodeClassLabels(bfd_train[,"arrival_delay"])
   train_eval <- evaluation.classification(bfd_train_predictand, train_prediction)
   print(train_eval$metrics)
   plot(roc_curve(train_eval))
   
   test_prediction <- predict(model, bfd_test)
   
-  bfd_test_predictand = decodeClassLabels(bfd_test[,"arrival_delay"])
+  bfd_test_predictand = RSNNS::decodeClassLabels(bfd_test[,"arrival_delay"])
   test_eval <- evaluation.classification(bfd_test_predictand, test_prediction)
   print(test_eval$metrics)
   plot(roc_curve(test_eval))
@@ -144,24 +150,24 @@ train_test <- function(model, bfd_train, bfd_test) {
 #Classe majoritaria
 train_test(classification_majority("arrival_delay", slevels), bfd_train, bfd_test)
 
-#Arvore de decisao - ERRO
+#Arvore de decisao
 train_test(classification_dtree("arrival_delay", slevels), bfd_train, bfd_test)
 
 #Naive Bayes
 train_test(classification_nb("arrival_delay", slevels), bfd_train, bfd_test)
 
-#Random Forest - ERRO
+#Random Forest
 train_test(classification_rf("arrival_delay", slevels, mtry=3, ntree=5), bfd_train, bfd_test)
 
-#SVM - ERRO
-train_test(classification_svm("arrival_delay", slevels, epsilon=0.0,cost=20.000), bfd_train, bfd_test)
+#SVM
+train_test(classification_svm("arrival_delay", slevels), bfd_train, bfd_test)
 
-#KNN - ERRO
+#KNN
 train_test(classification_knn("arrival_delay", slevels, k=1), bfd_train, bfd_test)
 
-#Redes Neurais - ERRO
+#Redes Neurais
 train_test(classification_mlp("arrival_delay", slevels, size=3,decay=0.03), bfd_train, bfd_test)
 
-#Redes Neurais Convulacionais - ERRO
+#Redes Neurais Convulacionais
 train_test(classification_cnn("arrival_delay", slevels, neurons=16,epochs=150), bfd_train, bfd_test)
 
